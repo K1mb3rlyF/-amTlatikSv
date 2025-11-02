@@ -181,7 +181,8 @@ import { ref, reactive, defineProps, defineEmits, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { 
   createUserWithEmailAndPassword,
-  updateProfile
+  updateProfile,
+  signOut
 } from 'firebase/auth';
 import { 
   auth,
@@ -403,7 +404,10 @@ const handleSubmit = async () => {
       avatar: avatarBase64
     });
 
-    message.value = '✅ ¡Registro exitoso! Ya eres miembro de Ñam Tlatik.';
+    // 🔥 CORRECCIÓN: Cerrar sesión inmediatamente después del registro
+    await signOut(auth);
+
+    message.value = '✅ ¡Registro exitoso! Ahora inicia sesión con tus credenciales.';
     messageType.value = 'success-message';
 
     // Limpiar el formulario
@@ -414,10 +418,9 @@ const handleSubmit = async () => {
     // Limpiar avatar
     removeAvatar()
 
-    // Cerrar el modal después de 2 segundos y redirigir
+    // 🔥 CORRECCIÓN: Cerrar el modal después de 2 segundos (sin redirigir)
     setTimeout(() => {
       close();
-      router.push('/'); // Redirigir al home
     }, 2000);
 
   } catch (error) {
@@ -442,7 +445,6 @@ const handleSubmit = async () => {
 </script>
 
 <style scoped>
-/* Estilos específicos para el modal de registro */
 .modal {
   position: fixed;
   top: 0;

@@ -47,9 +47,51 @@ const displayName = computed(() => {
   return user.value?.displayName || 'Usuario';
 });
 
+// SOLUCIÓN: Usar solo Firestore para el avatar (evita error de longitud)
 const userAvatar = computed(() => {
-  return userData.value?.avatar || user.value?.photoURL || '';
+  return userData.value?.avatar || '';
 });
+
+// VERIFICACIÓN MÁS ROBUSTA DEL USUARIO
+const currentUser = computed(() => {
+  if (!user.value) return null;
+  if (!user.value.uid) return null;
+  if (typeof user.value.uid !== 'string') return null;
+  if (user.value.uid.length < 5) return null;
+  
+  return user.value;
+});
+
+// ESCUCHAR ACTUALIZACIONES DEL PERFIL - NUEVO MÉTODO
+const handleProfileUpdated = async (updatedData) => {
+  console.log('🔄 Perfil actualizado recibido en Header:', updatedData);
+  
+  // Si hay un avatar actualizado
+  if (updatedData.avatar !== undefined) {
+    console.log('🖼️ Actualizando avatar en header...');
+    
+    // Forzar actualización del avatar en el header
+    if (userData.value) {
+      userData.value.avatar = updatedData.avatar;
+    }
+    
+    // Recargar datos del usuario desde Firestore para sincronizar completamente
+    if (auth.currentUser) {
+      try {
+        const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+        if (userDoc.exists()) {
+          userData.value = { ...userData.value, ...userDoc.data() };
+          console.log('✅ Datos del usuario recargados desde Firestore');
+        }
+      } catch (error) {
+        console.error('Error recargando datos del usuario:', error);
+      }
+    }
+    
+    // Forzar re-render del componente
+    userData.value = { ...userData.value };
+  }
+};
 
 // Mostrar modal de confirmación
 function confirmLogout() {
@@ -80,17 +122,27 @@ function cancelLogout() {
 function goToLogin() {
   if (!isLoggedIn.value) {
     router.push('/auth/login');
+  } else {
+    // Si ya está logueado, mostrar menú
+    showMenu.value = !showMenu.value;
   }
 }
 
 function openProfile() {
-  showProfileModal.value = true;
-  showMenu.value = false;
+  if (currentUser.value) {
+    showProfileModal.value = true;
+    showMenu.value = false;
+  } else {
+    // Si no hay usuario autenticado, redirigir a login
+    router.push('/auth/login');
+  }
 }
 
 function handleMouseEnter() {
   clearTimeout(hoverTimeout);
-  showMenu.value = true;
+  if (isLoggedIn.value) {
+    showMenu.value = true;
+  }
 }
 
 function handleMouseLeave() {
@@ -114,7 +166,7 @@ function handleMouseLeave() {
     >
       <button class="auth-btn animate__animated animate__fadeIn" @click="goToLogin">
         <div class="user-avatar-small" v-if="isLoggedIn && userAvatar">
-          <img :src="userAvatar" alt="Avatar" />
+          <img :src="userAvatar" alt="Avatar" :key="userAvatar" />
         </div>
         <div class="user-avatar-small placeholder" v-else-if="isLoggedIn">
           {{ displayName.charAt(0) }}
@@ -126,7 +178,7 @@ function handleMouseLeave() {
       <div v-show="showMenu && isLoggedIn" class="login-menu">
         <div class="user-info-menu">
           <div class="user-avatar-menu" v-if="userAvatar">
-            <img :src="userAvatar" alt="Avatar" />
+            <img :src="userAvatar" alt="Avatar" :key="userAvatar" />
           </div>
           <div class="user-avatar-menu placeholder" v-else>
             {{ displayName.charAt(0) }}
@@ -152,12 +204,13 @@ function handleMouseLeave() {
       </div>
     </div>
 
-    <!-- Modal de Perfil -->
+    <!-- Modal de Perfil - SOLO se muestra si hay usuario autenticado -->
     <UserProfile 
-      v-if="isLoggedIn"
+      v-if="currentUser"
       :show="showProfileModal" 
-      :user="user"
+      :user="currentUser"
       @close="showProfileModal = false"
+      @profile-updated="handleProfileUpdated"
     />
 
     <!-- Modal de Confirmación de Cierre de Sesión -->
